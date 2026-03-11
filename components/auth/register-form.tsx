@@ -46,6 +46,12 @@ export function RegisterForm() {
       }
 
       if (authData.session) {
+        // Force the client to use the new session tokens immediately
+        await supabase.auth.setSession({
+          access_token: authData.session.access_token,
+          refresh_token: authData.session.refresh_token,
+        });
+
         // Auto-confirmed → create org via SECURITY DEFINER function (bypasses RLS)
         const orgName = data.organizationName || data.email.split("@")[0] || "Minha Organização";
         const { error: rpcErr } = await supabase.rpc("create_org_for_user", {

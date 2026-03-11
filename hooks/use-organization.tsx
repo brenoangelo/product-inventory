@@ -62,6 +62,23 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     refresh();
+
+    const supabase = createClient();
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((event) => {
+      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
+        refresh();
+      }
+      if (event === "SIGNED_OUT") {
+        setOrganization(null);
+        setMembership(null);
+      }
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, [refresh]);
 
   return (
