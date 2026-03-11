@@ -60,6 +60,7 @@ export function RegisterForm() {
 
         if (rpcErr) {
           console.error("create_org_for_user failed", rpcErr);
+          toast.error(`Erro ao criar organização: ${rpcErr.message}`);
         }
 
         toast.success("Conta criada com sucesso!");
