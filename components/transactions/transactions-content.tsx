@@ -24,6 +24,7 @@ import {
   useDeleteTransaction,
 } from "@/hooks/use-transactions";
 import { useProducts } from "@/hooks/use-products";
+import { usePlanLimits } from "@/hooks/use-plan-limits";
 import type { TransactionFormData } from "@/lib/validations/transaction";
 import type { TransactionType } from "@/types/database";
 import type { TransactionListParams } from "@/lib/services/transactions";
@@ -53,6 +54,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { TransactionForm } from "./transaction-form";
+import { PlanLimitBanner } from "@/components/ui/plan-limit-banner";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -88,6 +90,7 @@ export function TransactionsContent() {
   const { data: products } = useProducts();
   const createTransaction = useCreateTransaction();
   const deleteTransaction = useDeleteTransaction();
+  const { canCreateTransaction, transactionsLabel } = usePlanLimits();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [deleteId, setDeleteId] = useState<string | null>(null);
@@ -168,14 +171,20 @@ export function TransactionsContent() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Transações</h1>
           <p className="text-[13px] text-muted-foreground">
-            Registre vendas, reposições e custos extras
+            Registre vendas, reposições e custos extras ({transactionsLabel} este mês)
           </p>
         </div>
-        <Button size="sm" onClick={() => setDialogOpen(true)}>
+        <Button size="sm" onClick={() => setDialogOpen(true)} disabled={!canCreateTransaction}>
           <Plus className="mr-1.5 h-4 w-4" />
           Nova Transação
         </Button>
       </div>
+
+      {!canCreateTransaction && (
+        <div className="mt-3">
+          <PlanLimitBanner message="Você atingiu o limite de transações do mês no seu plano. Faça upgrade para registrar mais." />
+        </div>
+      )}
 
       {/* Filters */}
       <div className="mt-4 flex flex-wrap items-center gap-2">

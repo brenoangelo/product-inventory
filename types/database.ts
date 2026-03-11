@@ -1,3 +1,38 @@
+export type MemberRole = "owner" | "admin" | "member";
+export type OrgPlan = "free" | "standard" | "enterprise";
+
+export interface Organization {
+  id: string;
+  name: string;
+  plan: OrgPlan;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OrganizationMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: MemberRole;
+  created_at: string;
+}
+
+export interface OrganizationMemberWithEmail extends OrganizationMember {
+  email: string;
+}
+
+export interface Invitation {
+  id: string;
+  organization_id: string;
+  email: string;
+  role: MemberRole;
+  invited_by: string;
+  token: string;
+  expires_at: string;
+  accepted_at: string | null;
+  created_at: string;
+}
+
 export interface Product {
   id: string;
   name: string;
@@ -8,6 +43,7 @@ export interface Product {
   sale_price: number;
   expiry_date: string | null;
   user_id: string;
+  organization_id: string;
   created_at: string;
   updated_at: string;
 }
@@ -34,6 +70,7 @@ export interface Transaction {
   description: string | null;
   product_id: string | null;
   user_id: string;
+  organization_id: string;
   created_by: string | null;
   date: string;
   created_at: string;

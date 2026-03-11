@@ -1,4 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
+import { getAuthenticatedOrg } from "@/lib/supabase/get-org";
+import { checkTransactionLimit } from "@/lib/services/plan-checks";
 import type {
   Transaction,
   TransactionInsert,
@@ -26,6 +28,7 @@ const PAGE_SIZE = 20;
 export const TransactionsService = {
   async list(params: TransactionListParams = {}): Promise<TransactionListResult> {
     const client = createClient();
+    const { organizationId } = await getAuthenticatedOrg();
     const {
       page = 1,
       pageSize = PAGE_SIZE,
@@ -41,7 +44,8 @@ export const TransactionsService = {
 
     let query = client
       .from("transactions")
-      .select("*, products(name)", { count: "exact" });
+      .select("*, products(name)", { count: "exact" })
+      .eq("organization_id", organizationId);
 
     if (type) {
       query = query.eq("type", type);
@@ -67,10 +71,9 @@ export const TransactionsService = {
 
   async create(transaction: TransactionInsert): Promise<Transaction> {
     const client = createClient();
-    const {
-      data: { user },
-    } = await client.auth.getUser();
-    if (!user) throw new Error("Usuário não autenticado");
+    const { user, organizationId, plan } = await getAuthenticatedOrg();
+
+    await checkTransactionLimit(organizationId, plan);
 
     const qty = transaction.quantity ?? 1;
 
@@ -82,6 +85,7 @@ export const TransactionsService = {
       product_id: transaction.product_id || null,
       date: transaction.date || new Date().toISOString(),
       user_id: user.id,
+      organization_id: organizationId,
       created_by: user.email || null,
     };
 

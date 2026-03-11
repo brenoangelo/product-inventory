@@ -10,6 +10,67 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
     if (!error) {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        // Check if user already belongs to an organization
+        const { data: existing } = await supabase
+          .from("organization_members")
+          .select("id")
+          .eq("user_id", user.id)
+          .limit(1);
+
+        if (!existing || existing.length === 0) {
+          // Check for pending invitation
+          const { data: invitations } = await supabase
+            .from("invitations")
+            .select("*")
+            .eq("email", user.email ?? "")
+            .is("accepted_at", null)
+            .gt("expires_at", new Date().toISOString())
+            .limit(1);
+
+          const invitation = invitations?.[0];
+
+          if (invitation) {
+            // Accept invitation: join existing org
+            await supabase.from("organization_members").insert({
+              organization_id: invitation.organization_id,
+              user_id: user.id,
+              role: invitation.role,
+            });
+
+            await supabase
+              .from("invitations")
+              .update({ accepted_at: new Date().toISOString() })
+              .eq("id", invitation.id);
+          } else {
+            // No invitation: create a new organization
+            const orgName =
+              (user.user_metadata?.organization_name as string) ||
+              user.email?.split("@")[0] ||
+              "Minha Organização";
+
+            const { data: orgs } = await supabase
+              .from("organizations")
+              .insert({ name: orgName })
+              .select()
+              .limit(1);
+
+            const org = orgs?.[0];
+            if (org) {
+              await supabase.from("organization_members").insert({
+                organization_id: org.id,
+                user_id: user.id,
+                role: "owner",
+              });
+            }
+          }
+        }
+      }
+
       return NextResponse.redirect(`${origin}${next}`);
     }
   }

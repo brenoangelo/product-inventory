@@ -30,9 +30,14 @@ export function RegisterForm() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signUp({
+      const { data: authData, error } = await supabase.auth.signUp({
         email: data.email,
         password: data.password,
+        options: {
+          data: {
+            organization_name: data.organizationName,
+          },
+        },
       });
 
       if (error) {
@@ -40,6 +45,32 @@ export function RegisterForm() {
         return;
       }
 
+      // If session exists, user is auto-confirmed → create org now
+      if (authData.session && authData.user) {
+        const orgName = data.organizationName || data.email.split("@")[0] || "Minha Organização";
+
+        const { data: org, error: orgErr } = await supabase
+          .from("organizations")
+          .insert({ name: orgName })
+          .select()
+          .limit(1);
+
+        const createdOrg = Array.isArray(org) ? org[0] : org;
+
+        if (!orgErr && createdOrg) {
+          await supabase.from("organization_members").insert({
+            organization_id: createdOrg.id,
+            user_id: authData.user.id,
+            role: "owner",
+          });
+        }
+
+        toast.success("Conta criada com sucesso!");
+        router.push("/dashboard");
+        return;
+      }
+
+      // No session → email confirmation required
       toast.success("Conta criada! Verifique seu email para confirmar.");
       router.push("/login");
     } catch {
@@ -52,6 +83,17 @@ export function RegisterForm() {
   return (
     <div className="rounded-xl border border-border/60 bg-card p-6">
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="organizationName" className="text-[13px]">Nome da Organização</Label>
+          <Input
+            id="organizationName"
+            placeholder="Ex: Minha Loja"
+            {...register("organizationName")}
+          />
+          {errors.organizationName && (
+            <p className="text-xs text-destructive">{errors.organizationName.message}</p>
+          )}
+        </div>
         <div className="space-y-1.5">
           <Label htmlFor="email" className="text-[13px]">Email</Label>
           <Input

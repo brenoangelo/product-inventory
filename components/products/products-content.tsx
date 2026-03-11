@@ -21,6 +21,7 @@ import {
   useUpdateProduct,
   useDeleteProduct,
 } from "@/hooks/use-products";
+import { usePlanLimits } from "@/hooks/use-plan-limits";
 import type { Product } from "@/types/database";
 import type { ProductFormData } from "@/lib/validations/product";
 import { Button } from "@/components/ui/button";
@@ -41,6 +42,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { ProductForm } from "./product-form";
+import { PlanLimitBanner } from "@/components/ui/plan-limit-banner";
 
 function formatCurrency(value: number) {
   return new Intl.NumberFormat("pt-BR", {
@@ -63,6 +65,7 @@ export function ProductsContent() {
   const createProduct = useCreateProduct();
   const updateProduct = useUpdateProduct();
   const deleteProduct = useDeleteProduct();
+  const { canCreateProduct, productsLabel } = usePlanLimits();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
@@ -208,14 +211,20 @@ export function ProductsContent() {
         <div>
           <h1 className="text-xl font-semibold tracking-tight">Produtos</h1>
           <p className="text-[13px] text-muted-foreground">
-            Gerencie seu catálogo de produtos
+            Gerencie seu catálogo de produtos ({productsLabel})
           </p>
         </div>
-        <Button size="sm" onClick={handleNew}>
+        <Button size="sm" onClick={handleNew} disabled={!canCreateProduct}>
           <Plus className="mr-1.5 h-4 w-4" />
           Novo Produto
         </Button>
       </div>
+
+      {!canCreateProduct && (
+        <div className="mt-3">
+          <PlanLimitBanner message="Você atingiu o limite de produtos do seu plano. Faça upgrade para cadastrar mais." />
+        </div>
+      )}
 
       {!products || products.length === 0 ? (
         <div className="mt-6 rounded-xl border border-border/60 bg-card">

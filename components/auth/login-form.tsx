@@ -29,7 +29,7 @@ export function LoginForm() {
     setLoading(true);
     try {
       const supabase = createClient();
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error, data: authData } = await supabase.auth.signInWithPassword({
         email: data.email,
         password: data.password,
       });
@@ -37,6 +37,59 @@ export function LoginForm() {
       if (error) {
         toast.error("Credenciais inválidas. Verifique email e senha.");
         return;
+      }
+
+      // Ensure user has an organization (handles existing users without one)
+      if (authData.user) {
+        const { data: membership } = await supabase
+          .from("organization_members")
+          .select("id")
+          .eq("user_id", authData.user.id)
+          .limit(1)
+          .maybeSingle();
+
+        if (!membership) {
+          // Check for pending invitation
+          const { data: invitation } = await supabase
+            .from("invitations")
+            .select("*")
+            .eq("email", authData.user.email ?? "")
+            .is("accepted_at", null)
+            .gt("expires_at", new Date().toISOString())
+            .limit(1)
+            .maybeSingle();
+
+          if (invitation) {
+            await supabase.from("organization_members").insert({
+              organization_id: invitation.organization_id,
+              user_id: authData.user.id,
+              role: invitation.role,
+            });
+            await supabase
+              .from("invitations")
+              .update({ accepted_at: new Date().toISOString() })
+              .eq("id", invitation.id);
+          } else {
+            const orgName =
+              (authData.user.user_metadata?.organization_name as string) ||
+              authData.user.email?.split("@")[0] ||
+              "Minha Organização";
+
+            const { data: org } = await supabase
+              .from("organizations")
+              .insert({ name: orgName })
+              .select()
+              .single();
+
+            if (org) {
+              await supabase.from("organization_members").insert({
+                organization_id: org.id,
+                user_id: authData.user.id,
+                role: "owner",
+              });
+            }
+          }
+        }
       }
 
       toast.success("Login realizado com sucesso!");

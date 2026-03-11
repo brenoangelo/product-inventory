@@ -7,11 +7,13 @@ import {
   Package,
   ArrowLeftRight,
   LogOut,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import { createClient } from "@/lib/supabase/client";
+import { useOrganization } from "@/hooks/use-organization";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 
@@ -19,11 +21,13 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/produtos", label: "Produtos", icon: Package },
   { href: "/dashboard/transacoes", label: "Transações", icon: ArrowLeftRight },
+  { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings },
 ];
 
 export function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
+  const { organization } = useOrganization();
 
   async function handleLogout() {
     const supabase = createClient();
@@ -36,13 +40,20 @@ export function SidebarNav() {
   return (
     <aside className="hidden md:flex md:w-60 md:flex-col border-r border-border/60 bg-sidebar">
       <div className="flex h-14 items-center px-5">
-        <Link href="/dashboard" className="flex items-center gap-2">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
+        <Link href="/dashboard" className="flex items-center gap-2 min-w-0">
+          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary">
             <Package className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-base font-semibold tracking-tight">
-            StockFlow
-          </span>
+          <div className="min-w-0">
+            <span className="block text-base font-semibold tracking-tight truncate">
+              StockFlow
+            </span>
+            {organization && (
+              <span className="block text-[11px] text-muted-foreground truncate -mt-0.5">
+                {organization.name}
+              </span>
+            )}
+          </div>
         </Link>
       </div>
 

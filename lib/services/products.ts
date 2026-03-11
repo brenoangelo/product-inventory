@@ -1,12 +1,17 @@
 import { createClient } from "@/lib/supabase/client";
+import { getAuthenticatedOrg } from "@/lib/supabase/get-org";
+import { checkProductLimit, checkTransactionLimit } from "@/lib/services/plan-checks";
 import type { Product, ProductInsert, ProductUpdate } from "@/types/database";
 
 export const ProductsService = {
   async list(): Promise<Product[]> {
     const client = createClient();
+    const { organizationId } = await getAuthenticatedOrg();
+
     const { data, error } = await client
       .from("products")
       .select("*")
+      .eq("organization_id", organizationId)
       .order("created_at", { ascending: false });
 
     if (error) throw new Error(error.message);
@@ -27,14 +32,13 @@ export const ProductsService = {
 
   async create(product: ProductInsert): Promise<Product> {
     const client = createClient();
-    const {
-      data: { user },
-    } = await client.auth.getUser();
-    if (!user) throw new Error("Usuário não autenticado");
+    const { user, organizationId, plan } = await getAuthenticatedOrg();
+
+    await checkProductLimit(organizationId, plan);
 
     const { data, error } = await client
       .from("products")
-      .insert({ ...product, user_id: user.id })
+      .insert({ ...product, user_id: user.id, organization_id: organizationId })
       .select()
       .single();
 
@@ -42,6 +46,7 @@ export const ProductsService = {
 
     // Auto-create stock_replenishment transaction for initial stock
     if (data.stock_quantity > 0) {
+      await checkTransactionLimit(organizationId, plan);
       await client.from("transactions").insert({
         type: "stock_replenishment",
         amount: data.cost_price * data.stock_quantity,
@@ -49,6 +54,7 @@ export const ProductsService = {
         description: `Estoque inicial — ${data.name}`,
         product_id: data.id,
         user_id: user.id,
+        organization_id: organizationId,
         created_by: user.email || null,
         date: new Date().toISOString(),
       });
@@ -59,10 +65,7 @@ export const ProductsService = {
 
   async update(id: string, product: ProductUpdate): Promise<Product> {
     const client = createClient();
-    const {
-      data: { user },
-    } = await client.auth.getUser();
-    if (!user) throw new Error("Usuário não autenticado");
+    const { user, organizationId, plan } = await getAuthenticatedOrg();
 
     // Fetch current product to detect stock change
     const { data: current } = await client
@@ -88,6 +91,8 @@ export const ProductsService = {
     ) {
       const diff = product.stock_quantity - current.stock_quantity;
 
+      await checkTransactionLimit(organizationId, plan);
+
       if (diff < 0) {
         // Stock decreased → sale transaction
         const qty = Math.abs(diff);
@@ -98,6 +103,7 @@ export const ProductsService = {
           description: `Ajuste de estoque — ${current.name}`,
           product_id: id,
           user_id: user.id,
+          organization_id: organizationId,
           created_by: user.email || null,
           date: new Date().toISOString(),
         });
@@ -110,6 +116,7 @@ export const ProductsService = {
           description: `Ajuste de estoque — ${current.name}`,
           product_id: id,
           user_id: user.id,
+          organization_id: organizationId,
           created_by: user.email || null,
           date: new Date().toISOString(),
         });

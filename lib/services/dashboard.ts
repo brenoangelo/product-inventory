@@ -1,14 +1,16 @@
 import { createClient } from "@/lib/supabase/client";
+import { getAuthenticatedOrg } from "@/lib/supabase/get-org";
 import { format } from "date-fns";
 import type { FinancialSummary, ChartDataPoint } from "@/types/database";
 
 export const DashboardService = {
   async getSummary(): Promise<FinancialSummary> {
     const client = createClient();
+    const { organizationId } = await getAuthenticatedOrg();
 
     const [productsRes, transactionsRes] = await Promise.all([
-      client.from("products").select("*"),
-      client.from("transactions").select("*"),
+      client.from("products").select("*").eq("organization_id", organizationId),
+      client.from("transactions").select("*").eq("organization_id", organizationId),
     ]);
 
     if (productsRes.error) throw new Error(productsRes.error.message);
@@ -48,9 +50,12 @@ export const DashboardService = {
 
   async getChartData(): Promise<ChartDataPoint[]> {
     const client = createClient();
+    const { organizationId } = await getAuthenticatedOrg();
+
     const { data, error } = await client
       .from("transactions")
       .select("type, amount, date")
+      .eq("organization_id", organizationId)
       .order("date", { ascending: true });
 
     if (error) throw new Error(error.message);

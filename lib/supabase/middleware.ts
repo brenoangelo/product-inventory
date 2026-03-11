@@ -35,9 +35,11 @@ export async function updateSession(request: NextRequest) {
 
   // Redirect unauthenticated users to login (except public routes)
   const publicRoutes = ["/login", "/register", "/auth/callback"];
-  const isPublicRoute = publicRoutes.some((route) =>
-    request.nextUrl.pathname.startsWith(route)
-  );
+  const isPublicRoute =
+    request.nextUrl.pathname === "/" ||
+    publicRoutes.some((route) =>
+      request.nextUrl.pathname.startsWith(route)
+    );
 
   if (!user && !isPublicRoute) {
     const url = request.nextUrl.clone();
@@ -45,8 +47,12 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Redirect authenticated users away from auth pages
-  if (user && isPublicRoute) {
+  // Redirect authenticated users away from auth pages (but NOT from /)
+  const isAuthRoute = publicRoutes.some((route) =>
+    request.nextUrl.pathname.startsWith(route)
+  );
+
+  if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
     return NextResponse.redirect(url);
