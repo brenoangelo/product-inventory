@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Building2, Loader2, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { useOrganization } from "@/hooks/use-organization";
 import { OrganizationsService } from "@/lib/services/organizations";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,6 +14,14 @@ export function CreateOrg() {
   const { refresh } = useOrganization();
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Pre-fill with org name from registration metadata
+  useEffect(() => {
+    createClient().auth.getUser().then(({ data: { user } }) => {
+      const metaName = user?.user_metadata?.organization_name as string | undefined;
+      if (metaName) setName(metaName);
+    });
+  }, []);
 
   async function handleCreate() {
     if (!name.trim()) {

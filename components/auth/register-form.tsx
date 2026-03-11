@@ -45,34 +45,24 @@ export function RegisterForm() {
         return;
       }
 
-      // If session exists, user is auto-confirmed → create org now
-      if (authData.session && authData.user) {
+      if (authData.session) {
+        // Auto-confirmed → create org via SECURITY DEFINER function (bypasses RLS)
         const orgName = data.organizationName || data.email.split("@")[0] || "Minha Organização";
+        const { error: rpcErr } = await supabase.rpc("create_org_for_user", {
+          org_name: orgName,
+        });
 
-        const { data: org, error: orgErr } = await supabase
-          .from("organizations")
-          .insert({ name: orgName })
-          .select()
-          .limit(1);
-
-        const createdOrg = Array.isArray(org) ? org[0] : org;
-
-        if (!orgErr && createdOrg) {
-          await supabase.from("organization_members").insert({
-            organization_id: createdOrg.id,
-            user_id: authData.user.id,
-            role: "owner",
-          });
+        if (rpcErr) {
+          console.error("create_org_for_user failed", rpcErr);
         }
 
         toast.success("Conta criada com sucesso!");
         router.push("/dashboard");
-        return;
+      } else {
+        // Email confirmation required → callback will handle org creation
+        toast.success("Conta criada! Verifique seu email para confirmar.");
+        router.push("/login");
       }
-
-      // No session → email confirmation required
-      toast.success("Conta criada! Verifique seu email para confirmar.");
-      router.push("/login");
     } catch {
       toast.error("Erro inesperado. Tente novamente.");
     } finally {

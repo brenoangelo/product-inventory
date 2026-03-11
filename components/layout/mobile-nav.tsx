@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Package,
   ArrowLeftRight,
+  BarChart3,
   LogOut,
   Menu,
   X,
@@ -23,6 +24,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/produtos", label: "Produtos", icon: Package },
   { href: "/dashboard/transacoes", label: "Transações", icon: ArrowLeftRight },
+  { href: "/dashboard/graficos", label: "Gráficos", icon: BarChart3 },
   { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings },
 ];
 

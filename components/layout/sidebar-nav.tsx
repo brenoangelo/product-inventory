@@ -6,6 +6,7 @@ import {
   LayoutDashboard,
   Package,
   ArrowLeftRight,
+  BarChart3,
   LogOut,
   Settings,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/dashboard/produtos", label: "Produtos", icon: Package },
   { href: "/dashboard/transacoes", label: "Transações", icon: ArrowLeftRight },
+  { href: "/dashboard/graficos", label: "Gráficos", icon: BarChart3 },
   { href: "/dashboard/configuracoes", label: "Configurações", icon: Settings },
 ];
 
@@ -38,7 +40,7 @@ export function SidebarNav() {
   }
 
   return (
-    <aside className="hidden md:flex md:w-60 md:flex-col border-r border-border/60 bg-sidebar">
+    <aside className="hidden md:flex md:w-60 md:flex-col top-0 sticky h-screen border-r border-border/60 bg-sidebar">
       <div className="flex h-14 items-center px-5">
         <Link href="/dashboard" className="flex items-center gap-2 min-w-0">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-primary">

@@ -3,14 +3,24 @@ import { getAuthenticatedOrg } from "@/lib/supabase/get-org";
 import { format } from "date-fns";
 import type { FinancialSummary, ChartDataPoint } from "@/types/database";
 
+export interface DateRange {
+  from: string; // ISO string
+  to: string;   // ISO string
+}
+
 export const DashboardService = {
-  async getSummary(): Promise<FinancialSummary> {
+  async getSummary(range: DateRange): Promise<FinancialSummary> {
     const client = createClient();
     const { organizationId } = await getAuthenticatedOrg();
 
     const [productsRes, transactionsRes] = await Promise.all([
       client.from("products").select("*").eq("organization_id", organizationId),
-      client.from("transactions").select("*").eq("organization_id", organizationId),
+      client
+        .from("transactions")
+        .select("*")
+        .eq("organization_id", organizationId)
+        .gte("date", range.from)
+        .lte("date", range.to),
     ]);
 
     if (productsRes.error) throw new Error(productsRes.error.message);
@@ -48,7 +58,7 @@ export const DashboardService = {
     };
   },
 
-  async getChartData(): Promise<ChartDataPoint[]> {
+  async getChartData(range: DateRange): Promise<ChartDataPoint[]> {
     const client = createClient();
     const { organizationId } = await getAuthenticatedOrg();
 
@@ -56,6 +66,8 @@ export const DashboardService = {
       .from("transactions")
       .select("type, amount, date")
       .eq("organization_id", organizationId)
+      .gte("date", range.from)
+      .lte("date", range.to)
       .order("date", { ascending: true });
 
     if (error) throw new Error(error.message);

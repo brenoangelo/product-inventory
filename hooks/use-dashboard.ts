@@ -1,18 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { DashboardService } from "@/lib/services/dashboard";
+import { DashboardService, type DateRange } from "@/lib/services/dashboard";
 
-export function useDashboard() {
+export function useDashboard(range: DateRange) {
   return useQuery({
-    queryKey: ["dashboard"],
-    queryFn: DashboardService.getSummary,
+    queryKey: ["dashboard", range.from, range.to],
+    queryFn: () => DashboardService.getSummary(range),
   });
 }
 
-export function useChartData() {
+export function useChartData(range: DateRange) {
   return useQuery({
-    queryKey: ["dashboard", "chart"],
-    queryFn: DashboardService.getChartData,
+    queryKey: ["dashboard", "chart", range.from, range.to],
+    queryFn: () => DashboardService.getChartData(range),
   });
 }

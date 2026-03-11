@@ -47,26 +47,13 @@ export async function GET(request: Request) {
               .update({ accepted_at: new Date().toISOString() })
               .eq("id", invitation.id);
           } else {
-            // No invitation: create a new organization
+            // No invitation → create org via SECURITY DEFINER function
             const orgName =
               (user.user_metadata?.organization_name as string) ||
               user.email?.split("@")[0] ||
               "Minha Organização";
 
-            const { data: orgs } = await supabase
-              .from("organizations")
-              .insert({ name: orgName })
-              .select()
-              .limit(1);
-
-            const org = orgs?.[0];
-            if (org) {
-              await supabase.from("organization_members").insert({
-                organization_id: org.id,
-                user_id: user.id,
-                role: "owner",
-              });
-            }
+            await supabase.rpc("create_org_for_user", { org_name: orgName });
           }
         }
       }
