@@ -23,13 +23,7 @@ import {
 } from "@/hooks/use-charts";
 import { usePlanLimits } from "@/hooks/use-plan-limits";
 import { Button } from "@/components/ui/button";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
+import { formatCurrency } from "@/lib/currency";
 
 const MONTHS_OPTIONS = [
   { value: 6, label: "6 meses" },

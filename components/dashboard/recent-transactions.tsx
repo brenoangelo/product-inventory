@@ -4,13 +4,7 @@ import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { Loader2, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import type { TransactionWithProduct } from "@/types/database";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
+import { formatCurrency } from "@/lib/currency";
 
 interface RecentTransactionsProps {
   transactions: TransactionWithProduct[];

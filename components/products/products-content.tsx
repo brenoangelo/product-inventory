@@ -24,15 +24,17 @@ import {
 import { usePlanLimits } from "@/hooks/use-plan-limits";
 import type { Product } from "@/types/database";
 import type { ProductFormData } from "@/lib/validations/product";
+import { formatCurrency } from "@/lib/currency";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import {
   Table,
   TableBody,
@@ -43,13 +45,6 @@ import {
 } from "@/components/ui/table";
 import { ProductForm } from "./product-form";
 import { PlanLimitBanner } from "@/components/ui/plan-limit-banner";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
 
 type SortKey = "stock_quantity" | "cost_price" | "sale_price" | "margin" | "expiry_date";
 type SortDir = "asc" | "desc";
@@ -383,23 +378,31 @@ export function ProductsContent() {
         </>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
+      <Sheet open={dialogOpen} onOpenChange={setDialogOpen}>
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>
               {editingProduct ? "Editar Produto" : "Novo Produto"}
-            </DialogTitle>
-          </DialogHeader>
-          <ProductForm
-            product={editingProduct}
-            onSubmit={handleSubmit}
-            isLoading={
-              createProduct.isPending || updateProduct.isPending
-            }
-            onCancel={() => setDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+            </SheetTitle>
+            <SheetDescription>
+              {editingProduct
+                ? "Atualize as informações do produto"
+                : "Preencha os dados do novo produto"}
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <ProductForm
+              key={editingProduct?.id ?? "new"}
+              product={editingProduct}
+              onSubmit={handleSubmit}
+              isLoading={
+                createProduct.isPending || updateProduct.isPending
+              }
+              onCancel={() => setDialogOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
     </>
   );
 }

@@ -9,13 +9,7 @@ import {
   Receipt,
 } from "lucide-react";
 import type { FinancialSummary } from "@/types/database";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
+import { formatCurrency } from "@/lib/currency";
 
 interface SummaryCardsProps {
   summary: FinancialSummary;

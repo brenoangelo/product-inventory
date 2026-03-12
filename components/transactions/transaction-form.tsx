@@ -1,14 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
-import { useForm } from "react-hook-form";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { Loader2 } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Loader2, Plus, Trash2 } from "lucide-react";
 
-import {
-  transactionSchema,
-  type TransactionFormData,
-} from "@/lib/validations/transaction";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,21 +13,36 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import type { Product } from "@/types/database";
+import type { Product, TransactionType } from "@/types/database";
+import { formatCurrency, toCents, fromCents } from "@/lib/currency";
 
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
+export interface TransactionItemLine {
+  product_id: string;
+  quantity: number;
+  unit_price: number;
+  cost_price?: number;
+}
+
+export interface TransactionFormPayload {
+  type: TransactionType;
+  description: string;
+  date: string;
+  items: TransactionItemLine[];
+  amount?: number;
 }
 
 interface TransactionFormProps {
   products: Product[];
-  onSubmit: (data: TransactionFormData) => void;
+  onSubmit: (data: TransactionFormPayload) => void;
   isLoading: boolean;
   onCancel: () => void;
 }
+
+const EMPTY_ITEM: TransactionItemLine = {
+  product_id: "",
+  quantity: 1,
+  unit_price: 0,
+};
 
 export function TransactionForm({
   products,
@@ -41,243 +50,379 @@ export function TransactionForm({
   isLoading,
   onCancel,
 }: TransactionFormProps) {
-  const {
-    register,
-    handleSubmit,
-    setValue,
-    watch,
-    formState: { errors },
-  } = useForm<TransactionFormData>({
-    resolver: zodResolver(transactionSchema),
-    defaultValues: {
-      type: "sale",
-      amount: 0,
+  const [type, setType] = useState<TransactionType>("sale");
+  const [description, setDescription] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 16));
+  const [items, setItems] = useState<TransactionItemLine[]>([{ ...EMPTY_ITEM }]);
+  const [extraCostAmount, setExtraCostAmount] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const showProducts = type === "sale" || type === "stock_replenishment";
+
+  const getProduct = useCallback(
+    (id: string) => products.find((p) => p.id === id),
+    [products]
+  );
+
+  function updateItem(index: number, patch: Partial<TransactionItemLine>) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, ...patch } : item)));
+  }
+
+  function addItem() {
+    setItems((prev) => [...prev, { ...EMPTY_ITEM }]);
+  }
+
+  function removeItem(index: number) {
+    if (items.length <= 1) return;
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleProductChange(index: number, productId: string) {
+    const product = getProduct(productId);
+    if (!product) return;
+
+    const price =
+      type === "sale" ? product.sale_price : product.cost_price;
+
+    updateItem(index, {
+      product_id: productId,
       quantity: 1,
-      description: "",
-      product_id: "",
-      date: new Date().toISOString().slice(0, 16),
-    },
-  });
+      unit_price: price,
+      cost_price: type === "stock_replenishment" ? product.cost_price : undefined,
+    });
+  }
 
-  const type = watch("type");
-  const productId = watch("product_id");
-  const quantity = watch("quantity") ?? 1;
-  const amount = watch("amount");
-  const costPrice = watch("cost_price");
+  function handleQuantityChange(index: number, qty: number) {
+    updateItem(index, { quantity: qty });
+  }
 
-  const selectedProduct = products.find((p) => p.id === productId);
+  function handleUnitPriceChange(index: number, price: number) {
+    updateItem(index, { unit_price: price });
+  }
 
-  const showProductSelect = type === "sale" || type === "stock_replenishment";
-  const showQuantity = showProductSelect && productId && selectedProduct;
+  function handleCostPriceChange(index: number, cost: number) {
+    const item = items[index];
+    updateItem(index, {
+      cost_price: cost,
+      unit_price: cost,
+    });
+  }
 
-  // Suggested amount for sale = sale_price * qty, for replenishment = cost_price * qty
-  const suggestedAmount =
-    selectedProduct && quantity
-      ? type === "sale"
-        ? selectedProduct.sale_price * quantity
-        : type === "stock_replenishment"
-          ? selectedProduct.cost_price * quantity
-          : null
-      : null;
+  function getItemTotal(item: TransactionItemLine): number {
+    return fromCents(toCents(item.unit_price) * item.quantity);
+  }
 
-  // Auto-fill amount when product or quantity changes (sale uses sale_price, replenishment uses cost_price)
-  useEffect(() => {
-    if (selectedProduct && quantity) {
-      if (type === "sale") {
-        setValue("amount", Number((selectedProduct.sale_price * quantity).toFixed(2)));
-      } else if (type === "stock_replenishment") {
-        const cost = costPrice ?? selectedProduct.cost_price;
-        setValue("amount", Number((cost * quantity).toFixed(2)));
+  const grandTotal = showProducts
+    ? items.reduce((sum, item) => sum + toCents(item.unit_price) * item.quantity, 0)
+    : toCents(parseFloat(extraCostAmount) || 0);
+
+  function validate(): boolean {
+    const errs: Record<string, string> = {};
+
+    if (showProducts) {
+      if (items.length === 0) {
+        errs.items = "Adicione pelo menos um produto.";
+      }
+      items.forEach((item, i) => {
+        if (!item.product_id) {
+          errs[`item_${i}_product`] = "Selecione um produto.";
+        }
+        if (item.quantity < 1) {
+          errs[`item_${i}_qty`] = "Mínimo 1.";
+        }
+        if (type === "sale") {
+          const product = getProduct(item.product_id);
+          if (product && item.quantity > product.stock_quantity) {
+            errs[`item_${i}_qty`] = `Estoque: ${product.stock_quantity}`;
+          }
+        }
+        if (item.unit_price <= 0) {
+          errs[`item_${i}_price`] = "Valor inválido.";
+        }
+      });
+      // Check duplicate products
+      const productIds = items.map((i) => i.product_id).filter(Boolean);
+      const dupes = productIds.filter((id, idx) => productIds.indexOf(id) !== idx);
+      if (dupes.length > 0) {
+        dupes.forEach((id) => {
+          const idx = items.findIndex((i) => i.product_id === id);
+          errs[`item_${idx}_product`] = "Produto duplicado.";
+        });
+      }
+    } else {
+      const amt = parseFloat(extraCostAmount);
+      if (!amt || amt <= 0) {
+        errs.amount = "Valor deve ser positivo.";
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, selectedProduct?.id, quantity, setValue]);
 
-  // Auto-fill cost_price from selected product
-  useEffect(() => {
-    if (type === "stock_replenishment" && selectedProduct) {
-      setValue("cost_price", selectedProduct.cost_price);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [type, selectedProduct?.id, setValue]);
+    setErrors(errs);
+    return Object.keys(errs).length === 0;
+  }
 
-  // Recalculate amount when cost_price changes for replenishment
-  useEffect(() => {
-    if (type === "stock_replenishment" && costPrice !== undefined && quantity) {
-      setValue("amount", Number((costPrice * quantity).toFixed(2)));
+  function handleFormSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!validate()) return;
+
+    if (showProducts) {
+      onSubmit({
+        type,
+        description,
+        date,
+        items,
+      });
+    } else {
+      onSubmit({
+        type,
+        description,
+        date,
+        items: [],
+        amount: parseFloat(extraCostAmount),
+      });
     }
-  }, [type, costPrice, quantity, setValue]);
+  }
+
+  // Products already used in other lines (for filtering)
+  function usedProductIds(excludeIndex: number): Set<string> {
+    return new Set(
+      items.filter((_, i) => i !== excludeIndex).map((i) => i.product_id).filter(Boolean)
+    );
+  }
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-3.5">
-      <div className="space-y-1.5">
-        <Label className="text-[13px]">Tipo *</Label>
-        <Select
-          value={type}
-          onValueChange={(value) => {
-            setValue("type", value as "sale" | "extra_cost" | "stock_replenishment");
-            setValue("product_id", "");
-            setValue("quantity", 1);
-            setValue("amount", 0);
-            setValue("cost_price", undefined);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione o tipo" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="sale">Venda</SelectItem>
-            <SelectItem value="extra_cost">Custo Extra</SelectItem>
-            <SelectItem value="stock_replenishment">Reposição de Estoque</SelectItem>
-          </SelectContent>
-        </Select>
-        {errors.type && (
-          <p className="text-xs text-destructive">{errors.type.message}</p>
-        )}
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="description" className="text-[13px]">Descrição</Label>
-        <Input
-          id="description"
-          placeholder="Descrição opcional"
-          {...register("description")}
-        />
-        {errors.description && (
-          <p className="text-xs text-destructive">{errors.description.message}</p>
-        )}
-      </div>
-
-      {showProductSelect && products.length > 0 && (
+    <form onSubmit={handleFormSubmit} className="flex flex-col h-full">
+      <div className="flex-1 space-y-4">
+        {/* Type */}
         <div className="space-y-1.5">
-          <Label className="text-[13px]">
-            {type === "sale" ? "Produto Associado" : "Produto *"}
-          </Label>
+          <Label className="text-[13px]">Tipo *</Label>
           <Select
-            value={productId || ""}
-            onValueChange={(value) => {
-              setValue("product_id", value);
-              setValue("quantity", 1);
+            value={type}
+            onValueChange={(v) => {
+              setType(v as TransactionType);
+              setItems([{ ...EMPTY_ITEM }]);
+              setExtraCostAmount("");
+              setErrors({});
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="Selecione um produto" />
+              <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              {products.map((p) => (
-                <SelectItem key={p.id} value={p.id}>
-                  {p.name}
-                  {type === "sale"
-                    ? ` — ${formatCurrency(p.sale_price)} (Estoque: ${p.stock_quantity})`
-                    : ` — Custo: ${formatCurrency(p.cost_price)} (Estoque: ${p.stock_quantity})`}
-                </SelectItem>
-              ))}
+              <SelectItem value="sale">Venda</SelectItem>
+              <SelectItem value="extra_cost">Custo Extra</SelectItem>
+              <SelectItem value="stock_replenishment">Reposição de Estoque</SelectItem>
             </SelectContent>
           </Select>
-          {errors.product_id && (
-            <p className="text-xs text-destructive">
-              {errors.product_id.message}
-            </p>
-          )}
         </div>
-      )}
 
-      {showQuantity && (
+        {/* Description */}
         <div className="space-y-1.5">
-          <Label htmlFor="quantity" className="text-[13px]">
-            Quantidade *{" "}
-            {type === "sale" && (
-              <span className="text-muted-foreground font-normal">
-                (disponível: {selectedProduct.stock_quantity})
-              </span>
-            )}
-          </Label>
+          <Label className="text-[13px]">Descrição</Label>
           <Input
-            id="quantity"
-            type="number"
-            min="1"
-            max={type === "sale" ? selectedProduct.stock_quantity : undefined}
-            {...register("quantity", { valueAsNumber: true })}
+            placeholder="Descrição opcional"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
           />
-          {errors.quantity && (
-            <p className="text-xs text-destructive">{errors.quantity.message}</p>
-          )}
         </div>
-      )}
 
-      {type === "stock_replenishment" && selectedProduct && (
+        {/* Date */}
         <div className="space-y-1.5">
-          <Label htmlFor="cost_price" className="text-[13px]">
-            Custo Unitário (R$) *{" "}
-            <span className="text-muted-foreground font-normal">
-              (atual: {formatCurrency(selectedProduct.cost_price)})
-            </span>
-          </Label>
+          <Label className="text-[13px]">Data</Label>
           <Input
-            id="cost_price"
-            type="number"
-            step="0.01"
-            min="0"
-            {...register("cost_price", { valueAsNumber: true })}
+            type="datetime-local"
+            value={date}
+            onChange={(e) => setDate(e.target.value)}
           />
-          {costPrice !== undefined &&
-            costPrice !== selectedProduct.cost_price && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">
-                O custo do produto será atualizado de{" "}
-                {formatCurrency(selectedProduct.cost_price)} para{" "}
-                {formatCurrency(costPrice)}
-              </p>
-            )}
-          {errors.cost_price && (
-            <p className="text-xs text-destructive">{errors.cost_price.message}</p>
-          )}
         </div>
-      )}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="amount" className="text-[13px]">
-          {type === "stock_replenishment" ? "Valor Total (R$) *" : "Valor (R$) *"}
-        </Label>
-        <Input
-          id="amount"
-          type="number"
-          step="0.01"
-          min="0.01"
-          {...register("amount", { valueAsNumber: true })}
-        />
-        {suggestedAmount !== null && (
-          <p className="text-xs text-muted-foreground">
-            Valor sugerido:{" "}
-            <span className="font-medium text-foreground">
-              {formatCurrency(suggestedAmount)}
-            </span>
-            {" "}
-            ({formatCurrency(
-              type === "sale"
-                ? selectedProduct!.sale_price
-                : costPrice ?? selectedProduct!.cost_price
-            )} × {quantity})
-            {amount !== suggestedAmount && (
-              <span className="ml-1 text-amber-600 dark:text-amber-400">
-                — diferença: {formatCurrency(amount - suggestedAmount)}
-              </span>
+        {/* Extra cost: single amount */}
+        {type === "extra_cost" && (
+          <div className="space-y-1.5">
+            <Label className="text-[13px]">Valor (R$) *</Label>
+            <Input
+              type="number"
+              step="0.01"
+              min="0.01"
+              placeholder="0,00"
+              value={extraCostAmount}
+              onChange={(e) => setExtraCostAmount(e.target.value)}
+            />
+            {errors.amount && (
+              <p className="text-xs text-destructive">{errors.amount}</p>
             )}
-          </p>
+          </div>
         )}
-        {errors.amount && (
-          <p className="text-xs text-destructive">{errors.amount.message}</p>
+
+        {/* Product lines */}
+        {showProducts && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="text-[13px] font-medium">Produtos</Label>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-7 text-xs"
+                onClick={addItem}
+              >
+                <Plus className="h-3 w-3 mr-1" />
+                Adicionar
+              </Button>
+            </div>
+
+            {items.map((item, index) => {
+              const product = getProduct(item.product_id);
+              const used = usedProductIds(index);
+              const itemTotal = getItemTotal(item);
+
+              return (
+                <div
+                  key={index}
+                  className="rounded-lg border border-border/60 bg-muted/20 p-3 space-y-2.5"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex-1 space-y-1.5">
+                      <Label className="text-[11px] text-muted-foreground">Produto</Label>
+                      <Select
+                        value={item.product_id || ""}
+                        onValueChange={(v) => handleProductChange(index, v)}
+                      >
+                        <SelectTrigger className="h-8 text-[13px]">
+                          <SelectValue placeholder="Selecione" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {products
+                            .filter((p) => !used.has(p.id))
+                            .map((p) => (
+                              <SelectItem key={p.id} value={p.id}>
+                                {p.name}
+                                <span className="text-muted-foreground ml-1">
+                                  (Est: {p.stock_quantity})
+                                </span>
+                              </SelectItem>
+                            ))}
+                        </SelectContent>
+                      </Select>
+                      {errors[`item_${index}_product`] && (
+                        <p className="text-xs text-destructive">
+                          {errors[`item_${index}_product`]}
+                        </p>
+                      )}
+                    </div>
+
+                    {items.length > 1 && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="mt-5 shrink-0"
+                        onClick={() => removeItem(index)}
+                      >
+                        <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
+
+                  {item.product_id && (
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Qtd</Label>
+                        <Input
+                          type="number"
+                          min="1"
+                          max={type === "sale" && product ? product.stock_quantity : undefined}
+                          value={item.quantity}
+                          onChange={(e) =>
+                            handleQuantityChange(index, parseInt(e.target.value) || 1)
+                          }
+                          className="h-8 text-[13px]"
+                        />
+                        {errors[`item_${index}_qty`] && (
+                          <p className="text-xs text-destructive">
+                            {errors[`item_${index}_qty`]}
+                          </p>
+                        )}
+                      </div>
+
+                      {type === "stock_replenishment" ? (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">
+                            Custo un. (R$)
+                          </Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.cost_price ?? item.unit_price}
+                            onChange={(e) =>
+                              handleCostPriceChange(index, parseFloat(e.target.value) || 0)
+                            }
+                            className="h-8 text-[13px]"
+                          />
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          <Label className="text-[11px] text-muted-foreground">
+                            Valor un. (R$)
+                          </Label>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={item.unit_price}
+                            onChange={(e) =>
+                              handleUnitPriceChange(index, parseFloat(e.target.value) || 0)
+                            }
+                            className="h-8 text-[13px]"
+                          />
+                          {errors[`item_${index}_price`] && (
+                            <p className="text-xs text-destructive">
+                              {errors[`item_${index}_price`]}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      <div className="space-y-1">
+                        <Label className="text-[11px] text-muted-foreground">Subtotal</Label>
+                        <div className="flex h-8 items-center rounded-md bg-muted/50 px-2 text-[13px] font-medium tabular-nums">
+                          {formatCurrency(itemTotal)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {type === "stock_replenishment" &&
+                    product &&
+                    item.cost_price !== undefined &&
+                    item.cost_price !== product.cost_price && (
+                      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                        Custo será atualizado: {formatCurrency(product.cost_price)} →{" "}
+                        {formatCurrency(item.cost_price)}
+                      </p>
+                    )}
+                </div>
+              );
+            })}
+
+            {errors.items && (
+              <p className="text-xs text-destructive">{errors.items}</p>
+            )}
+          </div>
+        )}
+
+        {/* Grand total */}
+        {grandTotal > 0 && (
+          <div className="flex items-center justify-between rounded-lg bg-muted/40 px-4 py-2.5 border border-border/60">
+            <span className="text-[13px] font-medium text-muted-foreground">Total</span>
+            <span className="text-base font-semibold tabular-nums">
+              {formatCurrency(fromCents(grandTotal))}
+            </span>
+          </div>
         )}
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="date" className="text-[13px]">Data</Label>
-        <Input id="date" type="datetime-local" {...register("date")} />
-        {errors.date && (
-          <p className="text-xs text-destructive">{errors.date.message}</p>
-        )}
-      </div>
-
-      <div className="flex justify-end gap-2 pt-2">
+      <div className="sticky bottom-0 flex justify-end gap-2 border-t border-border/60 bg-background px-6 py-4 -mx-6 mt-6">
         <Button type="button" variant="outline" size="sm" onClick={onCancel}>
           Cancelar
         </Button>

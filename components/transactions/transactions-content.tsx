@@ -25,7 +25,6 @@ import {
 } from "@/hooks/use-transactions";
 import { useProducts } from "@/hooks/use-products";
 import { usePlanLimits } from "@/hooks/use-plan-limits";
-import type { TransactionFormData } from "@/lib/validations/transaction";
 import type { TransactionType } from "@/types/database";
 import type { TransactionListParams } from "@/lib/services/transactions";
 import { Button } from "@/components/ui/button";
@@ -46,6 +45,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
+import {
   Table,
   TableBody,
   TableCell,
@@ -53,15 +59,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { TransactionForm } from "./transaction-form";
+import { TransactionForm, type TransactionFormPayload } from "./transaction-form";
 import { PlanLimitBanner } from "@/components/ui/plan-limit-banner";
-
-function formatCurrency(value: number) {
-  return new Intl.NumberFormat("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  }).format(value);
-}
+import { formatCurrency, toCents, fromCents } from "@/lib/currency";
 
 type SortKey = "amount" | "quantity" | "date";
 type SortDir = "asc" | "desc";
@@ -135,18 +135,41 @@ export function TransactionsContent() {
     }
   }
 
-  async function handleSubmit(data: TransactionFormData) {
+  async function handleSubmit(data: TransactionFormPayload) {
     try {
-      await createTransaction.mutateAsync({
-        type: data.type,
-        amount: data.amount,
-        quantity: data.quantity,
-        cost_price: data.cost_price,
-        description: data.description || null,
-        product_id: data.product_id || null,
-        date: data.date ? new Date(data.date).toISOString() : undefined,
-      });
-      toast.success("Transação registrada com sucesso!");
+      const isoDate = data.date ? new Date(data.date).toISOString() : undefined;
+
+      if (data.items.length === 0) {
+        // extra_cost — single transaction without product
+        await createTransaction.mutateAsync({
+          type: data.type,
+          amount: data.amount ?? 0,
+          description: data.description || null,
+          product_id: null,
+          date: isoDate,
+        });
+      } else {
+        // Create one transaction per product line
+        for (const item of data.items) {
+          const totalCents = toCents(item.unit_price) * item.quantity;
+          await createTransaction.mutateAsync({
+            type: data.type,
+            amount: fromCents(totalCents),
+            quantity: item.quantity,
+            cost_price: item.cost_price,
+            description: data.description || null,
+            product_id: item.product_id,
+            date: isoDate,
+          });
+        }
+      }
+
+      const count = Math.max(data.items.length, 1);
+      toast.success(
+        count > 1
+          ? `${count} transações registradas com sucesso!`
+          : "Transação registrada com sucesso!"
+      );
       setDialogOpen(false);
     } catch (err) {
       toast.error(
@@ -410,19 +433,24 @@ export function TransactionsContent() {
         </>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader>
-            <DialogTitle>Nova Transação</DialogTitle>
-          </DialogHeader>
-          <TransactionForm
-            products={products ?? []}
-            onSubmit={handleSubmit}
-            isLoading={createTransaction.isPending}
-            onCancel={() => setDialogOpen(false)}
-          />
-        </DialogContent>
-      </Dialog>
+      <Sheet open={dialogOpen} onOpenChange={setDialogOpen}>
+        <SheetContent side="right">
+          <SheetHeader>
+            <SheetTitle>Nova Transação</SheetTitle>
+            <SheetDescription>
+              Registre uma venda, reposição ou custo extra
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-6 pb-6">
+            <TransactionForm
+              products={products ?? []}
+              onSubmit={handleSubmit}
+              isLoading={createTransaction.isPending}
+              onCancel={() => setDialogOpen(false)}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       {/* Delete confirmation dialog */}
       <Dialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>

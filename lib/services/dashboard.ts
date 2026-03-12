@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 import { getAuthenticatedOrg } from "@/lib/supabase/get-org";
 import { format } from "date-fns";
+import { toMoney } from "@/lib/utils";
 import type { FinancialSummary, ChartDataPoint } from "@/types/database";
 
 export interface DateRange {
@@ -29,20 +30,26 @@ export const DashboardService = {
     const products = productsRes.data ?? [];
     const transactions = transactionsRes.data ?? [];
 
-    const totalSales = transactions
-      .filter((t) => t.type === "sale")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const totalSales = toMoney(
+      transactions
+        .filter((t) => t.type === "sale")
+        .reduce((sum, t) => sum + Number(t.amount), 0)
+    );
 
-    const totalExtraCosts = transactions
-      .filter((t) => t.type === "extra_cost")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const totalExtraCosts = toMoney(
+      transactions
+        .filter((t) => t.type === "extra_cost")
+        .reduce((sum, t) => sum + Number(t.amount), 0)
+    );
 
-    const totalReplenishment = transactions
-      .filter((t) => t.type === "stock_replenishment")
-      .reduce((sum, t) => sum + Number(t.amount), 0);
+    const totalReplenishment = toMoney(
+      transactions
+        .filter((t) => t.type === "stock_replenishment")
+        .reduce((sum, t) => sum + Number(t.amount), 0)
+    );
 
-    const totalCosts = totalReplenishment + totalExtraCosts;
-    const netProfit = totalSales - totalCosts;
+    const totalCosts = toMoney(totalReplenishment + totalExtraCosts);
+    const netProfit = toMoney(totalSales - totalCosts);
 
     const lowStockProducts = products.filter(
       (p) => p.stock_quantity <= 5
@@ -86,13 +93,13 @@ export const DashboardService = {
         extraCosts: 0,
       };
 
-      const amount = Number(t.amount);
-      if (t.type === "sale") entry.sales += amount;
+      const amount = toMoney(Number(t.amount));
+      if (t.type === "sale") entry.sales = toMoney(entry.sales + amount);
       else if (t.type === "stock_replenishment") {
-        entry.costs += amount;
+        entry.costs = toMoney(entry.costs + amount);
       } else if (t.type === "extra_cost") {
-        entry.costs += amount;
-        entry.extraCosts += amount;
+        entry.costs = toMoney(entry.costs + amount);
+        entry.extraCosts = toMoney(entry.extraCosts + amount);
       }
 
       grouped.set(day, entry);
@@ -100,10 +107,10 @@ export const DashboardService = {
 
     return Array.from(grouped.entries()).map(([date, vals]) => ({
       date,
-      sales: Number(vals.sales.toFixed(2)),
-      costs: Number(vals.costs.toFixed(2)),
-      extraCosts: Number(vals.extraCosts.toFixed(2)),
-      netProfit: Number((vals.sales - vals.costs).toFixed(2)),
+      sales: vals.sales,
+      costs: vals.costs,
+      extraCosts: vals.extraCosts,
+      netProfit: toMoney(vals.sales - vals.costs),
     }));
   },
 };
